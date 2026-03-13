@@ -294,6 +294,25 @@ export function AnalysisWorkbench() {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [insights, setInsights] = useState<InsightsResponse>(fallbackInsights);
+  const [isRefreshingInsights, setIsRefreshingInsights] = useState(false);
+
+  async function refreshInsights() {
+    setIsRefreshingInsights(true);
+
+    try {
+      const response = await fetch("/api/insights");
+      if (!response.ok) {
+        return;
+      }
+
+      const payload = (await response.json()) as InsightsResponse;
+      setInsights(normalizeInsights(payload));
+    } catch {
+      // Keep the current dashboard state when the refresh call fails.
+    } finally {
+      setIsRefreshingInsights(false);
+    }
+  }
 
   useEffect(() => {
     let active = true;
@@ -350,16 +369,7 @@ export function AnalysisWorkbench() {
 
       setResult(payload);
       setError(null);
-
-      try {
-        const response = await fetch("/api/insights");
-        if (response.ok) {
-          const insightsPayload = (await response.json()) as InsightsResponse;
-          setInsights(normalizeInsights(insightsPayload));
-        }
-      } catch {
-        // Leave the last known insights visible if refresh fails.
-      }
+      await refreshInsights();
     } catch (submitError) {
       setError(
         submitError instanceof Error
@@ -803,6 +813,14 @@ export function AnalysisWorkbench() {
                   Retest and reliability trends
                 </h2>
               </div>
+              <button
+                type="button"
+                onClick={refreshInsights}
+                disabled={isRefreshingInsights || isLoading}
+                className="inline-flex items-center justify-center rounded-full bg-[#F26419] px-4 py-2 text-sm font-semibold text-white transition hover:bg-[#002855] disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                {isRefreshingInsights ? "Refreshing" : "Refresh Trends"}
+              </button>
             </div>
 
             <div className="mt-6 grid gap-4 sm:grid-cols-3">
