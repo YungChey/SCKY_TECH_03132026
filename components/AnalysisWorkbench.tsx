@@ -271,6 +271,23 @@ const fallbackInsights: InsightsResponse = {
   },
 };
 
+function normalizeInsights(payload: InsightsResponse): InsightsResponse {
+  return {
+    promptLibrary:
+      payload.promptLibrary.length > 0
+        ? payload.promptLibrary
+        : fallbackInsights.promptLibrary,
+    recentRuns: payload.recentRuns,
+    trends: {
+      totalRuns: payload.trends.totalRuns,
+      averageTrustScore: payload.trends.averageTrustScore,
+      averageHallucinationRate: payload.trends.averageHallucinationRate,
+      topBrands: payload.trends.topBrands,
+      trendSeries: payload.trends.trendSeries,
+    },
+  };
+}
+
 export function AnalysisWorkbench() {
   const [prompt, setPrompt] = useState(initialData.prompt);
   const [result, setResult] = useState<AnalysisResponse>(initialData);
@@ -290,7 +307,7 @@ export function AnalysisWorkbench() {
 
         const payload = (await response.json()) as InsightsResponse;
         if (active) {
-          setInsights(payload);
+          setInsights(normalizeInsights(payload));
         }
       } catch {
         // Keep the current fallback insights when the request is unavailable.
@@ -338,7 +355,7 @@ export function AnalysisWorkbench() {
         const response = await fetch("/api/insights");
         if (response.ok) {
           const insightsPayload = (await response.json()) as InsightsResponse;
-          setInsights(insightsPayload);
+          setInsights(normalizeInsights(insightsPayload));
         }
       } catch {
         // Leave the last known insights visible if refresh fails.

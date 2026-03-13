@@ -1,6 +1,14 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 
+const defaultPromptLibrary = [
+  "best laptops under $500",
+  "best noise-cancelling headphones",
+  "affordable 4k monitors",
+  "best phone with a good camera",
+  "protein powder for muscle gain",
+];
+
 function formatDateLabel(date: Date) {
   return new Intl.DateTimeFormat("en-US", {
     month: "short",
@@ -30,14 +38,7 @@ export async function GET() {
     });
 
     const promptLibrary = Array.from(
-      new Set([
-        ...recentRuns.map((run) => run.prompt),
-        "best laptops under $500",
-        "best noise-cancelling headphones",
-        "affordable 4k monitors",
-        "best phone with a good camera",
-        "protein powder for muscle gain",
-      ])
+      new Set([...recentRuns.map((run) => run.prompt), ...defaultPromptLibrary])
     )
       .slice(0, 8)
       .map((prompt) => ({ prompt }));
