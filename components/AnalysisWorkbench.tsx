@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { AnalysisCategories } from "@/components/AnalysisCategories";
 import type { AccuracyIndicator } from "@/components/BrandCard";
 import { BrandMonitoringGrid } from "@/components/BrandMonitoringGrid";
@@ -29,6 +29,37 @@ type AnalysisResponse = {
   analysis: RecommendationAnalysis;
   source?: "openai" | "demo";
   modeMessage?: string;
+};
+
+type InsightRun = {
+  id: string;
+  prompt: string;
+  brand: string;
+  product: string | null;
+  trustScore: number;
+  verdict: "Trustworthy" | "Questionable" | "Misleading";
+  createdAt: string;
+  claimCount: number;
+  incorrectClaims: number;
+  resolutionConfidence: "high" | "medium" | "low";
+};
+
+type InsightTrendPoint = {
+  label: string;
+  trustScore: number;
+  hallucinationRate: number;
+};
+
+type InsightsResponse = {
+  promptLibrary: Array<{ prompt: string }>;
+  recentRuns: InsightRun[];
+  trends: {
+    totalRuns: number;
+    averageTrustScore: number;
+    averageHallucinationRate: number;
+    topBrands: Array<{ name: string; count: number }>;
+    trendSeries: InsightTrendPoint[];
+  };
 };
 
 const initialData: AnalysisResponse = {
@@ -169,7 +200,7 @@ const pricingTiers: Array<{
 }> = [
   {
     name: "Starter",
-    price: "$49/month",
+    price: "$149/month",
     features: [
       "Basic brand monitoring",
       "AI visibility score",
@@ -179,7 +210,7 @@ const pricingTiers: Array<{
   },
   {
     name: "Professional",
-    price: "$199/month",
+    price: "$499/month",
     features: [
       "Competitor tracking",
       "Real-time objection alerts",
@@ -190,7 +221,7 @@ const pricingTiers: Array<{
   },
   {
     name: "Enterprise",
-    price: "$499/month",
+    price: "$1100/month",
     features: [
       "Unlimited prompt analyses",
       "API access",
@@ -223,11 +254,55 @@ const promotionalOffers: Array<{
   },
 ] as const;
 
+const fallbackInsights: InsightsResponse = {
+  promptLibrary: [
+    { prompt: "best laptops under $500" },
+    { prompt: "best noise-cancelling headphones" },
+    { prompt: "affordable 4k monitors" },
+    { prompt: "best phone with a good camera" },
+  ],
+  recentRuns: [],
+  trends: {
+    totalRuns: 0,
+    averageTrustScore: 0,
+    averageHallucinationRate: 0,
+    topBrands: [],
+    trendSeries: [],
+  },
+};
+
 export function AnalysisWorkbench() {
   const [prompt, setPrompt] = useState(initialData.prompt);
   const [result, setResult] = useState<AnalysisResponse>(initialData);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [insights, setInsights] = useState<InsightsResponse>(fallbackInsights);
+
+  useEffect(() => {
+    let active = true;
+
+    async function loadInsights() {
+      try {
+        const response = await fetch("/api/insights");
+        if (!response.ok) {
+          return;
+        }
+
+        const payload = (await response.json()) as InsightsResponse;
+        if (active) {
+          setInsights(payload);
+        }
+      } catch {
+        // Keep the current fallback insights when the request is unavailable.
+      }
+    }
+
+    loadInsights();
+
+    return () => {
+      active = false;
+    };
+  }, []);
 
   async function handleSubmit() {
     if (!prompt.trim()) {
@@ -258,6 +333,16 @@ export function AnalysisWorkbench() {
 
       setResult(payload);
       setError(null);
+
+      try {
+        const response = await fetch("/api/insights");
+        if (response.ok) {
+          const insightsPayload = (await response.json()) as InsightsResponse;
+          setInsights(insightsPayload);
+        }
+      } catch {
+        // Leave the last known insights visible if refresh fails.
+      }
     } catch (submitError) {
       setError(
         submitError instanceof Error
@@ -350,6 +435,36 @@ export function AnalysisWorkbench() {
   const businessStatus =
     result.claims.claims.length > 0 ? "Active" : "Unknown";
 
+  const structuredFixes = useMemo(() => {
+    const grouped = new Map<string, string[]>();
+
+    for (const fix of result.analysis.recommendedFixes) {
+      const normalized = fix.toLowerCase();
+      const category = normalized.includes("schema")
+        ? "Schema"
+        : normalized.includes("price") || normalized.includes("retailer")
+          ? "Pricing"
+          : normalized.includes("stock") || normalized.includes("availability")
+            ? "Inventory"
+            : normalized.includes("brand") || normalized.includes("product")
+              ? "Entity"
+              : "Content";
+
+      grouped.set(category, [...(grouped.get(category) ?? []), fix]);
+    }
+
+    if (grouped.size === 0) {
+      grouped.set("Content", [
+        "Maintain current product feeds and continue periodic retesting to preserve AI accuracy.",
+      ]);
+    }
+
+    return Array.from(grouped.entries()).map(([category, items]) => ({
+      category,
+      items,
+    }));
+  }, [result.analysis.recommendedFixes]);
+
   const metrics = [
     {
       label: "Overall Trust Score",
@@ -383,8 +498,26 @@ export function AnalysisWorkbench() {
     },
   ] as const;
 
+  const trendCards = [
+    {
+      label: "Tracked Runs",
+      value: insights.trends.totalRuns,
+      suffix: "",
+    },
+    {
+      label: "Average Trust",
+      value: insights.trends.averageTrustScore,
+      suffix: "%",
+    },
+    {
+      label: "Average Hallucination",
+      value: insights.trends.averageHallucinationRate,
+      suffix: "%",
+    },
+  ] as const;
+
   return (
-    <main className="min-h-screen bg-[radial-gradient(circle_at_top_left,rgba(59,130,246,0.14),transparent_28%),radial-gradient(circle_at_bottom_right,rgba(16,185,129,0.10),transparent_24%),linear-gradient(180deg,#f8fbff_0%,#eef4ff_100%)] px-4 py-4 text-slate-900 sm:px-6 lg:px-8">
+    <main className="min-h-screen overflow-x-clip bg-[radial-gradient(circle_at_top_left,rgba(59,130,246,0.14),transparent_28%),radial-gradient(circle_at_bottom_right,rgba(16,185,129,0.10),transparent_24%),linear-gradient(180deg,#f8fbff_0%,#eef4ff_100%)] px-3 py-3 text-slate-900 sm:px-6 sm:py-4 lg:px-8">
       <NavigationBar
         prompt={prompt}
         isLoading={isLoading}
@@ -394,11 +527,11 @@ export function AnalysisWorkbench() {
 
       <div className="mx-auto mt-6 flex w-full max-w-7xl flex-col gap-6">
         <section className="grid gap-6 xl:grid-cols-[1.45fr_0.95fr]">
-          <div className="rounded-[2rem] border border-slate-200/80 bg-[#002855] p-7 text-white shadow-[0_28px_70px_rgba(15,23,42,0.18)]">
+          <div className="rounded-[2rem] border border-slate-200/80 bg-[#002855] p-5 text-white shadow-[0_28px_70px_rgba(15,23,42,0.18)] sm:p-7">
             <p className="inline-flex rounded-full border border-white/15 bg-white/10 px-3 py-1 text-xs font-semibold uppercase tracking-[0.24em] text-blue-100">
               Live AI Monitoring
             </p>
-            <h1 className="mt-5 max-w-2xl font-display text-4xl leading-tight sm:text-5xl">
+            <h1 className="mt-5 max-w-2xl font-display text-[2.85rem] leading-[0.95] sm:text-5xl">
               Brand trust intelligence for AI recommendations
             </h1>
             <p className="mt-4 max-w-2xl text-sm leading-7 text-slate-200 sm:text-base">
@@ -412,7 +545,7 @@ export function AnalysisWorkbench() {
                 <p className="text-xs uppercase tracking-[0.18em] text-slate-300">
                   Business status
                 </p>
-                <p className="mt-3 text-3xl font-semibold">
+                <p className="mt-3 break-words text-3xl font-semibold">
                   {businessStatus}
                 </p>
               </div>
@@ -428,7 +561,7 @@ export function AnalysisWorkbench() {
                 <p className="text-xs uppercase tracking-[0.18em] text-slate-300">
                   Verdict label
                 </p>
-                <p className="mt-3 text-3xl font-semibold">
+                <p className="mt-3 break-words text-3xl font-semibold">
                   {result.analysis.verdict}
                 </p>
               </div>
@@ -607,6 +740,195 @@ export function AnalysisWorkbench() {
         <BrandMonitoringGrid brands={brandCards} />
         <TrustScoreDashboard metrics={[...metrics]} />
 
+        <section className="grid gap-6 xl:grid-cols-[1.05fr_0.95fr]">
+          <article className="rounded-[2rem] border border-slate-200/80 bg-white/80 p-6 shadow-[0_22px_60px_rgba(15,23,42,0.08)] backdrop-blur">
+            <div className="flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
+              <div>
+                <p className="text-sm font-semibold uppercase tracking-[0.24em] text-[#F26419]">
+                  Prompt Library
+                </p>
+                <h2 className="mt-2 font-display text-3xl text-slate-950">
+                  Reusable shopping prompt tests
+                </h2>
+              </div>
+              <p className="max-w-xl text-sm leading-6 text-slate-500">
+                Save and rerun high-value prompts to monitor how AI shopping
+                answers evolve over time.
+              </p>
+            </div>
+
+            <div className="mt-6 grid gap-3 md:grid-cols-2">
+              {insights.promptLibrary.map(({ prompt: libraryPrompt }) => (
+                <button
+                  key={libraryPrompt}
+                  type="button"
+                  onClick={() => setPrompt(libraryPrompt)}
+                  className="rounded-[1.4rem] border border-slate-200 bg-slate-50 px-4 py-4 text-left transition hover:border-[#F26419]/40 hover:bg-[#F26419]/5"
+                >
+                  <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
+                    Saved test prompt
+                  </p>
+                  <p className="mt-2 text-sm font-medium leading-6 text-slate-800">
+                    {libraryPrompt}
+                  </p>
+                </button>
+              ))}
+            </div>
+          </article>
+
+          <article className="rounded-[2rem] border border-slate-200/80 bg-white/80 p-6 shadow-[0_22px_60px_rgba(15,23,42,0.08)] backdrop-blur">
+            <div className="flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
+              <div>
+                <p className="text-sm font-semibold uppercase tracking-[0.24em] text-[#F26419]">
+                  Trend Dashboard
+                </p>
+                <h2 className="mt-2 font-display text-3xl text-slate-950">
+                  Retest and reliability trends
+                </h2>
+              </div>
+            </div>
+
+            <div className="mt-6 grid gap-4 sm:grid-cols-3">
+              {trendCards.map((card) => (
+                <div
+                  key={card.label}
+                  className="rounded-[1.5rem] border border-slate-200 bg-slate-50 p-5"
+                >
+                  <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
+                    {card.label}
+                  </p>
+                  <p className="mt-3 text-3xl font-semibold text-[#002855]">
+                    {card.value}
+                    {card.suffix}
+                  </p>
+                </div>
+              ))}
+            </div>
+
+            <div className="mt-5 rounded-[1.5rem] border border-slate-200 bg-slate-50 p-5">
+              <div className="flex items-center justify-between gap-4">
+                <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
+                  Recent trust trend
+                </p>
+                <div className="flex flex-wrap gap-2 text-xs text-slate-500">
+                  {insights.trends.topBrands.map((brand) => (
+                    <span
+                      key={brand.name}
+                      className="rounded-full border border-[#F26419]/25 bg-[#F26419]/10 px-3 py-1 text-[#F26419]"
+                    >
+                      {brand.name} · {brand.count}
+                    </span>
+                  ))}
+                </div>
+              </div>
+
+              <div className="mt-5 flex items-end gap-3">
+                {(insights.trends.trendSeries.length > 0
+                  ? insights.trends.trendSeries
+                  : [
+                      { label: "Now", trustScore: result.analysis.trustScore, hallucinationRate },
+                    ]
+                ).map((point) => (
+                  <div key={point.label} className="flex flex-1 flex-col items-center gap-2">
+                    <div className="flex h-36 w-full items-end rounded-[1.2rem] bg-slate-100 px-2 py-2">
+                      <div
+                        className="w-full rounded-full bg-[#002855]"
+                        style={{ height: `${Math.max(point.trustScore, 10)}%` }}
+                      />
+                    </div>
+                    <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">
+                      {point.label}
+                    </p>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </article>
+        </section>
+
+        <section className="rounded-[2rem] border border-slate-200/80 bg-white/80 p-6 shadow-[0_22px_60px_rgba(15,23,42,0.08)] backdrop-blur">
+          <div className="flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
+            <div>
+              <p className="text-sm font-semibold uppercase tracking-[0.24em] text-[#F26419]">
+                Retest History
+              </p>
+              <h2 className="mt-2 font-display text-3xl text-slate-950">
+                Recent monitored AI answer runs
+              </h2>
+            </div>
+          </div>
+
+          <div className="mt-6 grid gap-4 lg:grid-cols-2">
+            {(insights.recentRuns.length > 0
+              ? insights.recentRuns
+              : [
+                  {
+                    id: "current",
+                    prompt: result.prompt,
+                    brand: result.analysis.brand ?? "Unknown",
+                    product: result.resolution?.resolvedProduct ?? null,
+                    trustScore: result.analysis.trustScore,
+                    verdict: result.analysis.verdict,
+                    createdAt: new Date().toISOString(),
+                    claimCount: result.claims.claims.length,
+                    incorrectClaims: result.analysis.incorrectClaims,
+                    resolutionConfidence: result.analysis.resolutionConfidence,
+                  },
+                ]
+            ).map((run) => (
+              <article
+                key={run.id}
+                className="rounded-[1.5rem] border border-slate-200 bg-slate-50 p-5"
+              >
+                <div className="flex items-start justify-between gap-4">
+                  <div>
+                    <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
+                      {new Date(run.createdAt).toLocaleString()}
+                    </p>
+                    <p className="mt-2 text-base font-semibold text-slate-900">
+                      {run.prompt}
+                    </p>
+                    <p className="mt-2 text-sm text-slate-600">
+                      {run.brand}
+                      {run.product ? ` · ${run.product}` : ""}
+                    </p>
+                  </div>
+                  <span className="rounded-full bg-[#002855]/10 px-3 py-1 text-xs font-semibold uppercase tracking-[0.16em] text-[#002855]">
+                    {run.verdict}
+                  </span>
+                </div>
+
+                <div className="mt-4 grid grid-cols-3 gap-3 text-sm">
+                  <div className="rounded-2xl bg-white px-3 py-3">
+                    <p className="text-[11px] uppercase tracking-[0.16em] text-slate-500">
+                      Trust
+                    </p>
+                    <p className="mt-2 text-2xl font-semibold text-[#002855]">
+                      {run.trustScore}%
+                    </p>
+                  </div>
+                  <div className="rounded-2xl bg-white px-3 py-3">
+                    <p className="text-[11px] uppercase tracking-[0.16em] text-slate-500">
+                      Claims
+                    </p>
+                    <p className="mt-2 text-2xl font-semibold text-slate-900">
+                      {run.claimCount}
+                    </p>
+                  </div>
+                  <div className="rounded-2xl bg-white px-3 py-3">
+                    <p className="text-[11px] uppercase tracking-[0.16em] text-slate-500">
+                      Errors
+                    </p>
+                    <p className="mt-2 text-2xl font-semibold text-rose-600">
+                      {run.incorrectClaims}
+                    </p>
+                  </div>
+                </div>
+              </article>
+            ))}
+          </div>
+        </section>
+
         <section className="rounded-[2rem] border border-slate-200/80 bg-white/80 p-6 shadow-[0_22px_60px_rgba(15,23,42,0.08)] backdrop-blur">
           <div className="flex items-end justify-between gap-4">
             <div>
@@ -655,6 +977,89 @@ export function AnalysisWorkbench() {
               trustScore={result.analysis.trustScore}
               summary={`${result.analysis.verdict}. ${result.analysis.correctClaims} claims were supported, ${result.analysis.incorrectClaims} were challenged, and the current Trust Score reflects brand visibility, verification strength, and entity resolution confidence. Next best action: ${result.analysis.recommendedFixes[0]}`}
             />
+          </div>
+
+          <div className="mt-6 grid gap-6 xl:grid-cols-[1.15fr_0.85fr]">
+            <article className="rounded-[1.8rem] border border-slate-200 bg-slate-50 p-6">
+              <div className="flex items-center justify-between gap-4">
+                <h3 className="font-display text-2xl text-slate-950">
+                  Verification Record
+                </h3>
+                <span className="rounded-full border border-[#F26419] bg-[#F26419]/10 px-3 py-1 text-xs font-semibold uppercase tracking-[0.18em] text-[#F26419]">
+                  Source-backed
+                </span>
+              </div>
+
+              <div className="mt-5 space-y-4">
+                {result.analysis.claimVerifications.map((verification) => (
+                  <div
+                    key={`${verification.claim.type}-${verification.claim.value}`}
+                    className="rounded-[1.3rem] border border-slate-200 bg-white p-4"
+                  >
+                    <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+                      <div>
+                        <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
+                          {verification.claim.type}
+                        </p>
+                        <p className="mt-2 text-sm font-semibold text-slate-900">
+                          {verification.claim.value}
+                        </p>
+                        <p className="mt-2 text-sm leading-6 text-slate-600">
+                          {verification.explanation}
+                        </p>
+                      </div>
+                      <span className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-xs font-semibold uppercase tracking-[0.16em] text-slate-700">
+                        {verification.status}
+                      </span>
+                    </div>
+
+                    {verification.sourcesUsed.length > 0 ? (
+                      <div className="mt-4 flex flex-wrap gap-2">
+                        {verification.sourcesUsed.map((source) => (
+                          <span
+                            key={source}
+                            className="rounded-full border border-[#002855]/15 bg-[#002855]/5 px-3 py-1 text-[11px] font-medium text-[#002855]"
+                          >
+                            {source}
+                          </span>
+                        ))}
+                      </div>
+                    ) : null}
+                  </div>
+                ))}
+              </div>
+            </article>
+
+            <article className="rounded-[1.8rem] border border-slate-200 bg-slate-50 p-6">
+              <div className="flex items-center justify-between gap-4">
+                <h3 className="font-display text-2xl text-slate-950">
+                  Why and How To Fix It
+                </h3>
+                <span className="rounded-full bg-[#002855] px-3 py-1 text-xs font-semibold uppercase tracking-[0.18em] text-white">
+                  Tier 3
+                </span>
+              </div>
+
+              <div className="mt-5 space-y-4">
+                {structuredFixes.map((group) => (
+                  <div
+                    key={group.category}
+                    className="rounded-[1.3rem] border border-slate-200 bg-white p-4"
+                  >
+                    <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[#F26419]">
+                      {group.category}
+                    </p>
+                    <ul className="mt-3 space-y-3 text-sm leading-6 text-slate-700">
+                      {group.items.map((item) => (
+                        <li key={item} className="rounded-2xl bg-slate-50 px-4 py-3">
+                          {item}
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                ))}
+              </div>
+            </article>
           </div>
         </section>
       </div>

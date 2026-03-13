@@ -13,12 +13,15 @@ VerdictAI allows a user to enter a shopping-style query such as `best laptops un
 - labels claims as `Verified`, `Partially Verified`, `Unverified`, or `Unknown`
 - calculates a Trust Score
 - shows evidence, objections, and a final verdict
+- stores every run as analysis history for retesting and trend review
+- includes prompt library, trend monitoring, and retest history views
 - includes a separate risk/compliance page with company policy content
 
 The current version is demo-safe:
 
 - if `OPENAI_API_KEY` is configured, the app can use the live API flow
 - if the API is unavailable, the app falls back to realistic demo responses so judges can still review the product experience
+- each analysis run is also stored locally so VerdictAI can retain evidence, scores, objections, and fixes as a research dataset
 
 ## Tech Stack / Frameworks
 
@@ -26,6 +29,8 @@ The current version is demo-safe:
 - `React`
 - `TypeScript`
 - `Tailwind CSS`
+- `Prisma`
+- `SQLite` for local analysis history
 - local verification logic and structured product catalog in `lib/`
 
 ## What A Judge Should Look At
@@ -41,6 +46,8 @@ What to review:
 - top search/analyze experience
 - dynamic Brand Monitoring Grid
 - Trust Score Dashboard
+- prompt library and retest history
+- trend dashboard and source-backed verification record
 - Evidence and Objections section
 - pricing cards
 - final verdict panel
@@ -87,8 +94,42 @@ chmod +x run.sh
 ```bash
 cd "/Users/cheyy/Downloads/BOTB March 2026/verdictai"
 npm install
+npm run db:init
 npm run dev
 ```
+
+## Database
+
+VerdictAI includes a local SQLite database managed through Prisma.
+
+Stored data includes:
+
+- prompts and raw AI answers
+- extracted claims
+- claim verification results
+- brand mentions
+- resolved brand and product context
+- evidence and objections
+- recommended fixes
+- trust score and verdict history
+
+Key files:
+
+- `prisma/schema.prisma`
+- `prisma/migrations/20260313000000_init_analysis_history/migration.sql`
+- `prisma/dev.db`
+
+Initialize the database manually with:
+
+```bash
+npm run db:init
+```
+
+Production note:
+
+- local persistence works for development and submission review
+- the current Vercel deployment should still be treated as demo hosting, not durable long-term storage
+- for real hosted persistence, keep the Prisma models and switch `DATABASE_URL` to Postgres
 
 ## Environment Variables
 
@@ -132,7 +173,8 @@ The app started successfully if:
 
 - `app/`
   - main app routes
-  - `/api/analyze` API route
+- `/api/analyze` API route
+- `/api/insights` trend and history API route
   - `/risk` policy and compliance page
 - `components/`
   - dashboard UI components
@@ -141,10 +183,10 @@ The app started successfully if:
   - product verification logic
   - demo response fallback
   - trust score analysis logic
+  - Prisma persistence helpers
 
 ## Notes For Judges
 
 - The product is intentionally structured like a business-facing SaaS dashboard.
 - The current implementation prioritizes explainability and demo reliability.
 - The system includes verification, entity resolution confidence, and recommended fixes without changing the dashboard layout.
-

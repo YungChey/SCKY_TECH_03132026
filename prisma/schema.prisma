@@ -1,0 +1,163 @@
+generator client {
+  provider = "prisma-client-js"
+  engineType = "binary"
+}
+
+datasource db {
+  provider = "sqlite"
+}
+
+enum AnalysisSource {
+  openai
+  demo
+}
+
+enum ClaimType {
+  price
+  feature
+  comparison
+  availability
+}
+
+enum ClaimVerificationStatus {
+  Verified
+  PartiallyVerified
+  Unverified
+  Unknown
+}
+
+enum VerdictLabel {
+  Trustworthy
+  Questionable
+  Misleading
+}
+
+enum ResolutionConfidence {
+  high
+  medium
+  low
+}
+
+model Brand {
+  id           String         @id @default(cuid())
+  name         String         @unique
+  website      String?
+  status       String         @default("Unknown")
+  products     Product[]
+  mentions     BrandMention[]
+  analysisRuns AnalysisRun[]
+  createdAt    DateTime       @default(now())
+  updatedAt    DateTime       @updatedAt
+}
+
+model Product {
+  id                          String        @id @default(cuid())
+  brandId                     String
+  brand                       Brand         @relation(fields: [brandId], references: [id], onDelete: Cascade)
+  name                        String
+  category                    String
+  price                       Int
+  availability                String
+  verificationSource          String
+  lastVerifiedAt              DateTime
+  officialBrandWebsite        String
+  productSpecificationPage    String
+  retailerListing             String
+  googleBusinessProfile       String
+  structuredProductSchema     String
+  featureSnapshot             String
+  analysisRuns                AnalysisRun[]
+  createdAt                   DateTime      @default(now())
+  updatedAt                   DateTime      @updatedAt
+
+  @@unique([brandId, name])
+}
+
+model AnalysisRun {
+  id                    String               @id @default(cuid())
+  prompt                String
+  rawAnswer             String
+  source                AnalysisSource
+  model                 String
+  modeMessage           String?
+  extractedProductName  String?
+  resolvedBrandName     String?
+  resolvedProductName   String?
+  resolutionReason      String
+  resolutionConfidence  ResolutionConfidence
+  trustScore            Int
+  verdict               VerdictLabel
+  correctClaims         Int
+  incorrectClaims       Int
+  verificationSummary   String
+  sourcePlatform        String               @default("web")
+  brandId               String?
+  productId             String?
+  brand                 Brand?               @relation(fields: [brandId], references: [id], onDelete: SetNull)
+  product               Product?             @relation(fields: [productId], references: [id], onDelete: SetNull)
+  claims                Claim[]
+  brandMentions         BrandMention[]
+  recommendedFixes      RecommendedFix[]
+  evidenceItems         EvidenceItem[]
+  objectionItems        ObjectionItem[]
+  createdAt             DateTime             @default(now())
+  updatedAt             DateTime             @updatedAt
+}
+
+model Claim {
+  id                     String                  @id @default(cuid())
+  analysisRunId          String
+  analysisRun            AnalysisRun             @relation(fields: [analysisRunId], references: [id], onDelete: Cascade)
+  type                   ClaimType
+  value                  String
+  verificationStatus     ClaimVerificationStatus
+  verificationExplanation String
+  isFlagged              Boolean                 @default(false)
+  sortOrder              Int
+  sources                ClaimSource[]
+  createdAt              DateTime                @default(now())
+}
+
+model ClaimSource {
+  id       String @id @default(cuid())
+  claimId  String
+  claim    Claim  @relation(fields: [claimId], references: [id], onDelete: Cascade)
+  label    String
+  sortOrder Int
+}
+
+model BrandMention {
+  id               String      @id @default(cuid())
+  analysisRunId    String
+  analysisRun      AnalysisRun @relation(fields: [analysisRunId], references: [id], onDelete: Cascade)
+  brandId          String?
+  brand            Brand?      @relation(fields: [brandId], references: [id], onDelete: SetNull)
+  brandName        String
+  mentionCount     Int
+  aiVisibilityScore Int
+}
+
+model RecommendedFix {
+  id            String      @id @default(cuid())
+  analysisRunId String
+  analysisRun   AnalysisRun @relation(fields: [analysisRunId], references: [id], onDelete: Cascade)
+  category      String
+  text          String
+  sortOrder     Int
+}
+
+model EvidenceItem {
+  id            String      @id @default(cuid())
+  analysisRunId String
+  analysisRun   AnalysisRun @relation(fields: [analysisRunId], references: [id], onDelete: Cascade)
+  text          String
+  sortOrder     Int
+}
+
+model ObjectionItem {
+  id            String      @id @default(cuid())
+  analysisRunId String
+  analysisRun   AnalysisRun @relation(fields: [analysisRunId], references: [id], onDelete: Cascade)
+  text          String
+  sortOrder     Int
+}

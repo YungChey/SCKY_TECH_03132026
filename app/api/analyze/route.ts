@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { analyzeRecommendation } from "@/lib/analyzeRecommendation";
 import { getDemoAnswer } from "@/lib/demoAnalysis";
 import { extractProductClaims } from "@/lib/extractProductClaims";
+import { persistAnalysisRun } from "@/lib/persistence";
 import { extractBrandMentions, resolveEntity } from "@/lib/productCatalog";
 
 const OPENAI_API_URL = "https://api.openai.com/v1/responses";
@@ -56,6 +57,27 @@ function buildAnalysisResponse(
   };
 }
 
+async function persistResponse(
+  payload: ReturnType<typeof buildAnalysisResponse>
+) {
+  try {
+    await persistAnalysisRun({
+      prompt: payload.prompt,
+      answer: payload.answer,
+      source: payload.source,
+      model: MODEL,
+      modeMessage: payload.modeMessage,
+      claims: payload.claims,
+      brandMentions: payload.brandMentions,
+      verifiedProduct: payload.verifiedProduct,
+      resolution: payload.resolution,
+      analysis: payload.analysis,
+    });
+  } catch (error) {
+    console.error("Failed to persist analysis run", error);
+  }
+}
+
 export async function POST(request: Request) {
   const apiKey = process.env.OPENAI_API_KEY;
 
@@ -80,14 +102,14 @@ export async function POST(request: Request) {
   }
 
   if (!apiKey) {
-    return NextResponse.json(
-      buildAnalysisResponse(
-        prompt,
-        getDemoAnswer(prompt),
-        "demo",
-        "Demo mode is active because OPENAI_API_KEY is not configured."
-      )
+    const responsePayload = buildAnalysisResponse(
+      prompt,
+      getDemoAnswer(prompt),
+      "demo",
+      "Demo mode is active because OPENAI_API_KEY is not configured."
     );
+    await persistResponse(responsePayload);
+    return NextResponse.json(responsePayload);
   }
 
   try {
@@ -104,29 +126,31 @@ export async function POST(request: Request) {
     });
 
     if (!openAIResponse.ok) {
-      return NextResponse.json(
-        buildAnalysisResponse(
-          prompt,
-          getDemoAnswer(prompt),
-          "demo",
-          "Demo mode is active because the live OpenAI request was unavailable."
-        )
+      const responsePayload = buildAnalysisResponse(
+        prompt,
+        getDemoAnswer(prompt),
+        "demo",
+        "Demo mode is active because the live OpenAI request was unavailable."
       );
+      await persistResponse(responsePayload);
+      return NextResponse.json(responsePayload);
     }
 
     const payload = (await openAIResponse.json()) as OpenAIResponse;
     const answer = getOutputText(payload);
-    return NextResponse.json(buildAnalysisResponse(prompt, answer, "openai"));
+    const responsePayload = buildAnalysisResponse(prompt, answer, "openai");
+    await persistResponse(responsePayload);
+    return NextResponse.json(responsePayload);
   } catch (error) {
-    return NextResponse.json(
-      buildAnalysisResponse(
-        prompt,
-        getDemoAnswer(prompt),
-        "demo",
-        `Demo mode is active because the live request failed${
-          error instanceof Error ? `: ${error.message}` : "."
-        }`
-      )
+    const responsePayload = buildAnalysisResponse(
+      prompt,
+      getDemoAnswer(prompt),
+      "demo",
+      `Demo mode is active because the live request failed${
+        error instanceof Error ? `: ${error.message}` : "."
+      }`
     );
+    await persistResponse(responsePayload);
+    return NextResponse.json(responsePayload);
   }
 }
