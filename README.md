@@ -1,36 +1,150 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# VerdictAI
 
-## Getting Started
+VerdictAI is a web application that monitors AI shopping answers, extracts product claims, verifies those claims against trusted product data, and calculates a Trust Score for brands. It is designed for businesses that want to understand how AI represents their products, detect misleading or hallucinated answers, and improve customer trust over time.
 
-First, run the development server:
+## What The Application Does
+
+VerdictAI allows a user to enter a shopping-style query such as `best laptops under $500` and then:
+
+- generates or simulates an AI shopping answer
+- extracts claims from that answer
+- detects brand mentions dynamically
+- verifies claims against structured product data
+- labels claims as `Verified`, `Partially Verified`, `Unverified`, or `Unknown`
+- calculates a Trust Score
+- shows evidence, objections, and a final verdict
+- includes a separate risk/compliance page with company policy content
+
+The current version is demo-safe:
+
+- if `OPENAI_API_KEY` is configured, the app can use the live API flow
+- if the API is unavailable, the app falls back to realistic demo responses so judges can still review the product experience
+
+## Tech Stack / Frameworks
+
+- `Next.js` App Router
+- `React`
+- `TypeScript`
+- `Tailwind CSS`
+- local verification logic and structured product catalog in `lib/`
+
+## What A Judge Should Look At
+
+### Main Dashboard
+
+Open the main dashboard at:
+
+- [http://localhost:3000](http://localhost:3000)
+
+What to review:
+
+- top search/analyze experience
+- dynamic Brand Monitoring Grid
+- Trust Score Dashboard
+- Evidence and Objections section
+- pricing cards
+- final verdict panel
+
+Recommended demo prompts:
+
+- `best laptops under $500`
+- `best noise-cancelling headphones`
+- `affordable 4k monitors`
+- `best phone with a good camera`
+- `protein powder for muscle gain`
+
+### Risk & Compliance Page
+
+Open:
+
+- [http://localhost:3000/risk](http://localhost:3000/risk)
+
+What to review:
+
+- company policies
+- privacy / ethics / accuracy / security / compliance framing
+- client-facing risk narrative
+
+## How To Run The Application
+
+### Recommended: run script
+
+From the project root:
 
 ```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+./run.sh
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+If the script is not executable yet, run:
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+```bash
+chmod +x run.sh
+./run.sh
+```
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+### Manual run
 
-## Learn More
+```bash
+cd "/Users/cheyy/Downloads/BOTB March 2026/verdictai"
+npm install
+npm run dev
+```
 
-To learn more about Next.js, take a look at the following resources:
+## Environment Variables
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+The app works in two modes:
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+### Demo Mode
 
-## Deploy on Vercel
+No setup required. If no API key is configured, the app still runs using realistic demo responses.
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+### Live API Mode
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+Create `.env.local` in the project root:
+
+```env
+OPENAI_API_KEY=your_real_openai_api_key
+OPENAI_MODEL=gpt-5
+```
+
+Then restart the dev server.
+
+## How To Tell If The App Started Successfully
+
+In the terminal, you should see output similar to:
+
+```bash
+Local: http://localhost:3000
+```
+
+Then open:
+
+- [http://localhost:3000](http://localhost:3000)
+
+The app started successfully if:
+
+- the VerdictAI dashboard loads in the browser
+- typing a prompt and clicking `Analyze` updates the dashboard
+- the Brand Monitoring Grid changes based on the query
+- the Evidence / Objections / Verdict sections populate
+
+## Project Structure
+
+- `app/`
+  - main app routes
+  - `/api/analyze` API route
+  - `/risk` policy and compliance page
+- `components/`
+  - dashboard UI components
+- `lib/`
+  - claim extraction
+  - product verification logic
+  - demo response fallback
+  - trust score analysis logic
+
+## Notes For Judges
+
+- The product is intentionally structured like a business-facing SaaS dashboard.
+- The current implementation prioritizes explainability and demo reliability.
+- The system includes verification, entity resolution confidence, and recommended fixes without changing the dashboard layout.
+
